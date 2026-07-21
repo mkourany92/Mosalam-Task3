@@ -1,0 +1,229 @@
+version: "3.9"
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik 
+
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+
+    networks:
+      - public-net
+      - monitoring-net
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # it use to watch docker 
+      - ../traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ../traefik/dynamic:/etc/traefik/dynamic:ro
+      - ../traefik/acme:/letsencrypt
+      - ../traefik/logs:/var/log/traefik
+
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    cpus: 0.50
+    mem_limit: 256m
+  frontend:
+    image: mkourany/frontend:v2
+    build:
+      context: ../frontend
+    networks:
+      - public-net
+    labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.frontend.rule=Host(`localhost`)"
+    - "traefik.http.routers.frontend.entrypoints=web"
+    - "traefik.http.services.frontend.loadbalancer.server.port=80"  
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    cpus: 0.25
+    mem_limit: 128m
+
+  backend:
+    image: mkourany/backend:v2
+    build:
+      context: ../backend
+    environment:
+      MYSQL_HOST: mysql
+      REDIS_HOST: redis
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
+      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      NODE_ENV: production
+     # PORT: ${BACKEND_PORT:-3000}
+      USER_INSERT_CRON: "*/5 * * * *"
+      USER_INSERT_BATCH_SIZE: "1000"
+    depends_on:
+      - mysql
+    networks:
+      - private-net
+      - public-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.services.backend.loadbalancer.server.port=3000"  
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    secrets:
+      - mysql_password
+    cpus: 0.50
+    mem_limit: 256m
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - private-net
+    volumes:
+      - redis_data:/data
+    command:
+      - redis-server
+      - --appendonly
+      - yes
+
+  mysql:
+    image: mysql:8.0.46
+    container_name: mkourany_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
+      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      TZ: UTC
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../mysql/initdb:/docker-entrypoint-initdb.d:ro
+    networks:
+      - private-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -pmysql_root || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    secrets:
+      - mysql_root_password
+      - mysql_password
+    cpus: 0.50
+    mem_limit: 512m  
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    privileged: true
+    #ports:
+    #  - "8082:8080"
+    command:
+      - --housekeeping_interval=10s
+      - --docker_only=true
+      - --store_container_labels=true
+      - --disable_metrics=udp,advtcp,sched,process
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 128m
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../monitoring/prometheus:/etc/prometheus:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+    cpus: 0.25
+    mem_limit: 256m
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    #ports:
+    #  - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    cpus: 0.25
+    mem_limit: 256m  
+
+networks:
+  public-net:
+    driver: bridge
+  private-net:
+    driver: bridge
+  monitoring-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  grafana_data:
+    driver: local
+  redis_data:  
+    driver: local
+
+secrets:
+  mysql_root_password:
+    file: ../secrets/mysql_root_password.txt
+  mysql_password:
+    file: ../secrets/mysql_password.txt

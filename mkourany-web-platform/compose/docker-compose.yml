@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:latest
     container_name: traefik 
 
     restart: unless-stopped
@@ -44,10 +44,10 @@ services:
     networks:
       - public-net
     labels:
-    - "traefik.enable=true"
-    - "traefik.http.routers.frontend.rule=Host(`localhost`)"
-    - "traefik.http.routers.frontend.entrypoints=web"
-    - "traefik.http.services.frontend.loadbalancer.server.port=80"  
+    - traefik.enable=true
+    - traefik.http.routers.frontend.rule=Host(`localhost`)
+    - traefik.http.routers.frontend.entrypoints=web
+    - traefik.http.services.frontend.loadbalancer.server.port=80
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1"]
@@ -76,17 +76,17 @@ services:
       NODE_ENV: production
      # PORT: ${BACKEND_PORT:-3000}
       USER_INSERT_CRON: "*/5 * * * *"
-      USER_INSERT_BATCH_SIZE: "1000"
+      USER_INSERT_BATCH_SIZE: "50"
     depends_on:
       - mysql
     networks:
       - private-net
       - public-net
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`localhost`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.backend.entrypoints=web"
-      - "traefik.http.services.backend.loadbalancer.server.port=3000"  
+      - traefik.enable=true
+      - traefik.http.routers.backend.rule=Host(`localhost`) && PathPrefix(`/api`)
+      - traefik.http.routers.backend.entrypoints=web
+      - traefik.http.services.backend.loadbalancer.server.port=3000
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
@@ -209,10 +209,13 @@ services:
 networks:
   public-net:
     driver: bridge
+    name: public-net
   private-net:
     driver: bridge
+    name: private-net
   monitoring-net:
     driver: bridge
+    name: monitoring-net
 
 volumes:
   mysql_data:

@@ -4,6 +4,8 @@ const router = express.Router();
 const pool = require("../db");
 const redis = require("../redis");
 
+console.log(redis);
+console.log(redis.get);
 /*
  * GET ALL USERS
  */
@@ -21,36 +23,44 @@ router.get("/", async (req, res, next) => {
  */
 router.get("/:id", async (req, res, next) => {
   try {
-    console.log("Request received");
     const id = req.params.id;
-    console.log("Checking Redis");
+
+    // Check Redis first
     const cached = await redis.get(`user:${id}`);
-    console.log("Redis returned:", cached);
+
     if (cached) {
-      console.log("Cache Hit");
+      console.log(`Cache Hit: user:${id}`);
       return res.json(JSON.parse(cached));
     }
-    console.log("Querying MySQL");
+
+    console.log(`Cache Miss: user:${id}`);
+
+    // Query MySQL
     const [rows] = await pool.query(
-      "SELECT * FROM users WHERE id=?",
+      "SELECT * FROM users WHERE id = ?",
       [id]
     );
-    console.log(rows);
-    if (!rows.length)
-      return res.status(404).json({ error: "Not Found" });
-    console.log("Writing to Redis");
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    // Store in Redis for 60 seconds
     await redis.setEx(
       `user:${id}`,
       60,
       JSON.stringify(rows[0])
     );
-    console.log("Saved");
+
     res.json(rows[0]);
+
   } catch (err) {
-    console.error(err);
     next(err);
   }
 });
+
 /*
  * CREATE USER
  */

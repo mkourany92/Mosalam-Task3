@@ -1,4 +1,3 @@
-# Mosalam-Task3
 global:
   checkNewVersion: true
   sendAnonymousUsage: false
@@ -20,7 +19,7 @@ providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
-    network: public-net
+    network: public
 
   file:
     directory: "/etc/traefik/dynamic"

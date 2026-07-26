@@ -4,8 +4,10 @@ const router = express.Router();
 const pool = require("../db");
 const redis = require("../redis");
 
-console.log(redis);
-console.log(redis.get);
+console.log("Redis object:", redis);
+console.log("Type:", typeof redis);
+console.log("Has get:", redis.get);
+console.log("Keys:", Object.keys(redis));
 /*
  * GET ALL USERS
  */
@@ -59,6 +61,13 @@ router.get("/:id", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    hostname: require("os").hostname(),
+    status: "ok",
+  });
 });
 
 /*

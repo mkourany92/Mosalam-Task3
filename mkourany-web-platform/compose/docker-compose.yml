@@ -3,7 +3,7 @@ version: "3.9"
 services:
   traefik:
     image: traefik:latest
-    container_name: traefik 
+    #container_name: traefik 
 
     restart: unless-stopped
 
@@ -147,6 +147,25 @@ services:
       - mysql_password
     cpus: 0.50
     mem_limit: 512m  
+
+  loki: 
+    image: grafana/loki:3.0.0
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ../monitoring/loki/config.yml:/etc/loki/config.yml:ro
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: 0.25
+    mem_limit: 256m
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest

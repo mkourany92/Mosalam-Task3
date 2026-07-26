@@ -1,6 +1,6 @@
 const cron = require("node-cron");
 
-function buildUserBatch(count = 1000, now = new Date()) {
+function buildUserBatch(count = 50, now = new Date()) {
   const baseTs = now.toISOString().replace(/[-:T.]/g, "").slice(0, 14);
   const users = [];
 
@@ -16,7 +16,7 @@ function buildUserBatch(count = 1000, now = new Date()) {
 }
 
 async function insertUserBatch(pool, options = {}) {
-  const batch = buildUserBatch(options.count || 1000, options.now);
+  const batch = buildUserBatch(options.count || 50, options.now);
   const values = batch.map((u) => [u.name, u.email]);
 
   if (!values.length) {
@@ -33,7 +33,7 @@ async function insertUserBatch(pool, options = {}) {
 
 function startUserInsertJob(pool, options = {}) {
   const cronExpression = options.cronExpression || process.env.USER_INSERT_CRON || "*/5 * * * *";
-  const batchSize = Number(options.count || process.env.USER_INSERT_BATCH_SIZE || 1000);
+  const batchSize = Number(options.count || process.env.USER_INSERT_BATCH_SIZE || 50);
 
   console.log(`User batch job scheduled with: ${cronExpression}, batch size: ${batchSize}`);
 

@@ -167,11 +167,43 @@ services:
     cpus: 0.25
     mem_limit: 256m
 
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+
+    command:
+      - -config.file=/etc/promtail/config.yml
+
+    restart: unless-stopped
+
+    networks:
+      - monitoring-net
+
+    volumes:
+      - ../monitoring/promtail/config.yml:/etc/promtail/config.yml:ro
+
+      # Read Docker container logs
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
+      # Read Docker metadata
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Store read positions
+      - promtail_positions:/tmp
+
+    depends_on:
+      - loki
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     privileged: true
-    #ports:
-    #  - "8082:8080"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.cadvisor.rule=Host(`localhost`) && PathPrefix(`/cadvisor`)
+      - traefik.http.routers.cadvisor.entrypoints=web
+      - traefik.http.services.cadvisor.loadbalancer.server.port=8080
+
+      - traefik.http.middlewares.cadvisor-strip.stripprefix.prefixes=/cadvisor
+      - traefik.http.routers.cadvisor.middlewares=cadvisor-strip
     command:
       - --housekeeping_interval=10s
       - --docker_only=true
@@ -188,8 +220,14 @@ services:
     mem_limit: 128m
   prometheus:
     image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prometheus.rule=Host(`localhost`) && PathPrefix(`/prometheus`)
+      - traefik.http.routers.prometheus.entrypoints=web
+      - traefik.http.services.prometheus.loadbalancer.server.port=9090
+
+      - traefik.http.middlewares.prometheus-strip.stripprefix.prefixes=/prometheus
+      - traefik.http.routers.prometheus.middlewares=prometheus-strip
     volumes:
       - ../monitoring/prometheus:/etc/prometheus:ro
     command:
@@ -208,8 +246,17 @@ services:
     image: grafana/grafana:latest
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-    #ports:
-    #  - "3001:3000"
+      GF_SERVER_ROOT_URL: http://localhost/grafana
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.grafana.rule=Host(`localhost`) && PathPrefix(`/grafana`)
+      - traefik.http.routers.grafana.entrypoints=web
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
+
+      # Remove /grafana before forwarding to Grafana
+      - traefik.http.middlewares.grafana-strip.stripprefix.prefixes=/grafana
+      - traefik.http.routers.grafana.middlewares=grafana-strip
     volumes:
       - grafana_data:/var/lib/grafana
       - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -243,6 +290,8 @@ volumes:
     driver: local
   redis_data:  
     driver: local
+  promtail_positions:
+    driver: local   
 
 secrets:
   mysql_root_password:

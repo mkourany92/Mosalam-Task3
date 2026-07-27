@@ -63,7 +63,7 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-app.get("/api/health", (req, res) => {
+router.get("/api/health", (req, res) => {
   res.json({
     hostname: require("os").hostname(),
     status: "ok",

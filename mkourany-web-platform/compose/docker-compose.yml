@@ -67,6 +67,8 @@ services:
     image: mkourany/backend:v2
     build:
       context: ../backend
+    deploy:
+      replicas: 2    
     environment:
       MYSQL_HOST: mysql
       REDIS_HOST: redis
@@ -137,6 +139,56 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    secrets:
+      - mysql_root_password
+      - mysql_password
+    cpus: 0.50
+    mem_limit: 512m  
+  mysql-backup:
+    image: mysql:8.0.46
+    depends_on:
+       mysql:
+        condition: service_healthy 
+    environment:
+      MYSQL_HOST: mkourany_mysql
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
+      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      TZ: UTC
+    volumes:
+      - ../mysql/backups:/backups
+    networks:
+      - private-net
+    restart: unless-stopped
+    entrypoint: >
+      sh -c '
+      while true; do
+        mysqldump \
+          --no-tablespaces \ss
+          -h "$$MYSQL_HOST" \
+          -u "$$MYSQL_USER" \
+          -p"$$(cat /run/secrets/mysql_password)" \
+          "$$MYSQL_DATABASE" \
+          > /backups/appdb_$$(date +%F_%H-%M-%S).sql;
+        if [ $$? -eq 0 ];then
+          echo "Backup successful";
+          find /backups \
+            -type f \
+            -name "*.sql" \
+            -mtime +7 \
+            -delete
+          echo "Old backups removed"
+        else
+          echo "Backup failed";
+        fi  
+
+        sleep 86400;
+      done'
     logging:
       driver: "json-file"
       options:

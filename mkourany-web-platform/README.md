@@ -39,7 +39,7 @@ metrics:
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: your-email@example.com
+      email: mkourany92@mosalam.com
       storage: /letsencrypt/acme.json
       httpChallenge:
         entryPoint: web

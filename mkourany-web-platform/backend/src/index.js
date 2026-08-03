@@ -7,9 +7,9 @@ const { startUserInsertJob } = require("./jobs/insertUserJob");
 const app = express();
 app.use(express.json());
 
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+app.get("/health", (req, res) => res.json({ status: "ok" }));
 
-app.get("/api/ready", async (req, res) => {
+app.get("/ready", async (req, res) => {
   try {
     await pool.query("SELECT 1");
     res.json({ ready: true });
@@ -18,7 +18,7 @@ app.get("/api/ready", async (req, res) => {
   }
 });
 
-app.use("/api/users", usersRouter);
+app.use("/users", usersRouter);
 
 const PORT = process.env.PORT || 3000;
 
